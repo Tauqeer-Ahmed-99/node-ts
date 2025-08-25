@@ -1,8 +1,14 @@
-class Database {
-  constructor() {
-    // Initialize database connection
-    console.log("Database initialized");
-  }
-}
+import "dotenv/config";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+import * as schema from "./schema";
 
-export default Database;
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL!,
+});
+
+const database = drizzle({ client: pool, schema });
+
+export default database;
+
+export type Database = typeof database;

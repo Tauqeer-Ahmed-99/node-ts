@@ -4,6 +4,9 @@ import Logger, { ILoggerVariants } from "../logger";
 enum EnvVars {
   PORT = "PORT",
   NODE_ENV = "NODE_ENV",
+  WORKOS_AUTHKIT_CLIENT_KEY = "WORKOS_AUTHKIT_CLIENT_KEY",
+  WORKOS_AUTHKIT_SECRET_KEY = "WORKOS_AUTHKIT_SECRET_KEY",
+  DATABASE_URL = "DATABASE_URL",
 }
 
 class ENV {
@@ -33,12 +36,22 @@ class ENV {
     }
 
     if (varsNotIncluded.length > 0) {
-      await this.logger.info("All required environment variables are set.", [
-        ILoggerVariants.CLI,
-      ]);
+      await this.logger.error(
+        "ENV",
+        `${
+          varsNotIncluded.length
+        } Environment variable(s) ${varsNotIncluded.join(", ")} are not set.`,
+        [ILoggerVariants.CLI]
+      );
 
       process.exit(1);
     }
+
+    await this.logger.info(
+      "ENV",
+      "All required environment variables are set.",
+      [ILoggerVariants.CLI]
+    );
   }
 }
 
