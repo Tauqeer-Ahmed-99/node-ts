@@ -11,6 +11,9 @@
 !.yarn/releases
 !.yarn/versions
 
+# drizzle migration content
+/database-migrations
+
 # testing
 /coverage
 
