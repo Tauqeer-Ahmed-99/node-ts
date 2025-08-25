@@ -21,13 +21,12 @@ const database = new DatabaseAccessLayer();
 const cliLogger = new CLILogger();
 const databaseLogger = new DatabaseLogger(database);
 const logger = new Logger([cliLogger, databaseLogger]);
+
 const env = new ENV(logger);
 
 const services = new Services(logger, database);
 
 const PORT = +env.variables.PORT || 8000;
-
-const app = express();
 
 const workos = new WorkOS(env.variables.WORKOS_AUTHKIT_SECRET_KEY, {
   clientId: env.variables.WORKOS_AUTHKIT_CLIENT_KEY,
@@ -39,16 +38,14 @@ const jwks = JWKSClient({
   ),
 });
 
+const app = express();
+
 app.use(cors(corsOptions));
 app.use(express.json());
 app.disable("etag");
 
-app.use(authenticate);
-
-// Middleware to attach a per-request logger with
-// user context by this time user object is set in req.user
 app.use((req, _, next) => {
-  req.logger = new Logger([cliLogger, databaseLogger], req.user);
+  req.logger = logger;
   req.env = env;
   req.workos = workos;
   req.jwks = jwks;
@@ -58,11 +55,7 @@ app.use((req, _, next) => {
 
 app.get("/", serviceStatus);
 
-app.use((req, _, next) => {
-  const logger = new Logger([cliLogger, databaseLogger], req.user);
-  req.logger = logger;
-  next();
-});
+app.use(authenticate);
 
 app.use(errorHandler);
 
@@ -81,12 +74,17 @@ app.listen(PORT, async () => {
    * - If you do not call logger.end(logId), the grouped logs are never flushed (memory leak risk if used in long-running processes).
    * - Passing an empty array or undefined for variants logs to all logger variants (CLI, FILE, DATABASE, etc.).
    * - Grouped logs are not immediately dispatched; they are only sent when logger.end() is called.
-   * - The user context at the time of logger.end() is used for the final batch log.
+   * - The user context at the time of each log call is used for that log entry.
    *
    * Example:
    */
   const id = logger.start();
-  await logger.info("Server", `Running on http://localhost:${PORT}`, [], id);
+  await logger.info({
+    logName: "Server",
+    message: `Running on http://localhost:${PORT}`,
+    user: null,
+    logId: id,
+  });
   await logger.end(id);
 
   /**
@@ -105,7 +103,10 @@ app.listen(PORT, async () => {
    *
    * Example:
    */
-  await logger.info("Logging Sample", "This is a sample Logging.", [
-    ILoggerVariants.CLI,
-  ]);
+  await logger.info({
+    logName: "Logging Sample",
+    message: "This is a sample Logging.",
+    user: null,
+    variants: [ILoggerVariants.CLI],
+  });
 });

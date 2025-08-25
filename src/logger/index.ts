@@ -54,17 +54,14 @@ export interface ILogger {
 export class Logger {
   // Use private fields for encapsulation
   #loggers: ILogger[];
-  #logs: Map<string, LogMessage[]> = new Map();
+  #logs: Map<string, { log: LogMessage; user: AuthUser | null }[]> = new Map();
   #loggerUtils: LoggerUtils;
-  user: AuthUser | null;
 
   /**
    * @param loggers Array of logger implementations
-   * @param user Optional AuthUser for context
    */
-  constructor(loggers: ILogger[], user: AuthUser | null = null) {
+  constructor(loggers: ILogger[]) {
     this.#loggers = loggers;
-    this.user = user;
     this.#loggerUtils = new LoggerUtils();
   }
 
@@ -86,14 +83,15 @@ export class Logger {
     logName: string,
     message: string,
     level: LogLevel,
-    timestamp: Date
+    timestamp: Date,
+    user: AuthUser | null
   ): Promise<boolean[]> {
     const cliLoggers = this.#loggers.filter(
       (l) => l.variant === ILoggerVariants.CLI
     );
     return Promise.all(
       cliLoggers.map((logger) =>
-        logger[level](logName, message, timestamp, this.user)
+        logger[level](logName, message, timestamp, user)
       )
     );
   }
@@ -105,14 +103,15 @@ export class Logger {
     logName: string,
     message: string,
     level: LogLevel,
-    timestamp: Date
+    timestamp: Date,
+    user: AuthUser | null
   ): Promise<boolean[]> {
     const fileLoggers = this.#loggers.filter(
       (l) => l.variant === ILoggerVariants.FILE
     );
     return Promise.all(
       fileLoggers.map((logger) =>
-        logger[level](logName, message, timestamp, this.user)
+        logger[level](logName, message, timestamp, user)
       )
     );
   }
@@ -124,14 +123,15 @@ export class Logger {
     logName: string,
     message: string,
     level: LogLevel,
-    timestamp: Date
+    timestamp: Date,
+    user: AuthUser | null
   ): Promise<boolean[]> {
     const dbLoggers = this.#loggers.filter(
       (l) => l.variant === ILoggerVariants.DATABASE
     );
     return Promise.all(
       dbLoggers.map((logger) =>
-        logger[level](logName, message, timestamp, this.user)
+        logger[level](logName, message, timestamp, user)
       )
     );
   }
@@ -143,6 +143,7 @@ export class Logger {
     logName: string,
     message: string,
     level: LogLevel,
+    user: AuthUser | null,
     variants: ILoggerVariants[] = [],
     logId?: string
   ): Promise<boolean> {
@@ -151,7 +152,10 @@ export class Logger {
     if (logId) {
       const group = this.#logs.get(logId);
       if (group) {
-        group.push({ id: logId, level, logName, message, timestamp });
+        group.push({
+          log: { id: logId, level, logName, message, timestamp },
+          user,
+        });
         return true;
       } else {
         console.error(`[Logger] Log group with id not found: ${logId}`);
@@ -169,15 +173,28 @@ export class Logger {
         useVariants.map(async (variant) => {
           switch (variant) {
             case ILoggerVariants.CLI:
-              return this.dispatchToCLI(logName, message, level, timestamp);
+              return this.dispatchToCLI(
+                logName,
+                message,
+                level,
+                timestamp,
+                user
+              );
             case ILoggerVariants.FILE:
-              return this.dispatchToFile(logName, message, level, timestamp);
+              return this.dispatchToFile(
+                logName,
+                message,
+                level,
+                timestamp,
+                user
+              );
             case ILoggerVariants.DATABASE:
               return this.dispatchToDatabase(
                 logName,
                 message,
                 level,
-                timestamp
+                timestamp,
+                user
               );
             default:
               return [];
@@ -211,14 +228,17 @@ export class Logger {
       return false;
     }
 
+    // Use the user from the last log in the group, or null if none
+    const lastUser = logs.length > 0 ? logs[logs.length - 1].user : null;
+
     const content = logs
-      .map((log) =>
+      .map(({ log, user }) =>
         this.#loggerUtils.getContent(
           log.level,
           log.logName,
           log.message,
           log.timestamp,
-          this.user
+          user
         )
       )
       .join("\n");
@@ -228,13 +248,14 @@ export class Logger {
       `End LogId: ${logId}`,
       "Log group End.",
       new Date(),
-      this.user
+      lastUser
     );
 
     const result = await this.log(
       `LogId: ${logId}`,
       `\n${content}\n${endContent}`,
       "info",
+      lastUser,
       []
     );
     this.#logs.delete(logId);
@@ -243,49 +264,101 @@ export class Logger {
 
   /**
    * Log an info message.
+   * @param params - Log parameters object
+   * @param params.logName - Name/category of the log
+   * @param params.message - Log message content
+   * @param params.user - User context (can be null)
+   * @param params.variants - (Optional) Array of logger variants to log to
+   * @param params.logId - (Optional) Group log ID for grouped logging
    */
-  info(
-    logName: string,
-    message: string,
-    variants: ILoggerVariants[] = [],
-    logId?: string
-  ): Promise<boolean> {
-    return this.log(logName, message, "info", variants, logId);
+  info({
+    logName,
+    message,
+    user,
+    variants = [],
+    logId,
+  }: {
+    logName: string;
+    message: string;
+    user?: AuthUser;
+    variants?: ILoggerVariants[];
+    logId?: string;
+  }): Promise<boolean> {
+    return this.log(logName, message, "info", user ?? null, variants, logId);
   }
 
   /**
    * Log a success message.
+   * @param params - Log parameters object
+   * @param params.logName - Name/category of the log
+   * @param params.message - Log message content
+   * @param params.user - User context (can be null)
+   * @param params.variants - (Optional) Array of logger variants to log to
+   * @param params.logId - (Optional) Group log ID for grouped logging
    */
-  success(
-    logName: string,
-    message: string,
-    variants: ILoggerVariants[] = [],
-    logId?: string
-  ): Promise<boolean> {
-    return this.log(logName, message, "success", variants, logId);
+  success({
+    logName,
+    message,
+    user,
+    variants = [],
+    logId,
+  }: {
+    logName: string;
+    message: string;
+    user: AuthUser | null;
+    variants?: ILoggerVariants[];
+    logId?: string;
+  }): Promise<boolean> {
+    return this.log(logName, message, "success", user ?? null, variants, logId);
   }
 
   /**
    * Log a warning message.
+   * @param params - Log parameters object
+   * @param params.logName - Name/category of the log
+   * @param params.message - Log message content
+   * @param params.user - User context (can be null)
+   * @param params.variants - (Optional) Array of logger variants to log to
+   * @param params.logId - (Optional) Group log ID for grouped logging
    */
-  warn(
-    logName: string,
-    message: string,
-    variants: ILoggerVariants[] = [],
-    logId?: string
-  ): Promise<boolean> {
-    return this.log(logName, message, "warn", variants, logId);
+  warn({
+    logName,
+    message,
+    user,
+    variants = [],
+    logId,
+  }: {
+    logName: string;
+    message: string;
+    user?: AuthUser;
+    variants?: ILoggerVariants[];
+    logId?: string;
+  }): Promise<boolean> {
+    return this.log(logName, message, "warn", user ?? null, variants, logId);
   }
 
   /**
    * Log an error message.
+   * @param params - Log parameters object
+   * @param params.logName - Name/category of the log
+   * @param params.message - Log message content
+   * @param params.user - User context (can be null)
+   * @param params.variants - (Optional) Array of logger variants to log to
+   * @param params.logId - (Optional) Group log ID for grouped logging
    */
-  error(
-    logName: string,
-    message: string,
-    variants: ILoggerVariants[] = [],
-    logId?: string
-  ): Promise<boolean> {
-    return this.log(logName, message, "error", variants, logId);
+  error({
+    logName,
+    message,
+    user,
+    variants = [],
+    logId,
+  }: {
+    logName: string;
+    message: string;
+    user?: AuthUser;
+    variants?: ILoggerVariants[];
+    logId?: string;
+  }): Promise<boolean> {
+    return this.log(logName, message, "error", user ?? null, variants, logId);
   }
 }

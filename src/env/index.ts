@@ -36,22 +36,24 @@ class ENV {
     }
 
     if (varsNotIncluded.length > 0) {
-      await this.logger.error(
-        "ENV",
-        `${
+      await this.logger.error({
+        logName: "ENV",
+        message: `${
           varsNotIncluded.length
         } Environment variable(s) ${varsNotIncluded.join(", ")} are not set.`,
-        [ILoggerVariants.CLI]
-      );
+        user: null,
+        variants: [ILoggerVariants.CLI],
+      });
 
       process.exit(1);
     }
 
-    await this.logger.info(
-      "ENV",
-      "All required environment variables are set.",
-      [ILoggerVariants.CLI]
-    );
+    await this.logger.info({
+      logName: "ENV",
+      message: "All required environment variables are set.",
+      user: null,
+      variants: [ILoggerVariants.CLI],
+    });
   }
 }
 
