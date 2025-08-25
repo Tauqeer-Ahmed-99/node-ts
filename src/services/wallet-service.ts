@@ -1,6 +1,6 @@
 import { Service } from ".";
 import Database from "../database/access-layer";
-import Logger from "../logger";
+import { Logger } from "../logger";
 
 class WalletService implements Service {
   readonly logger: Logger;

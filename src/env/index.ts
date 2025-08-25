@@ -1,5 +1,5 @@
 import "dotenv/config";
-import Logger, { ILoggerVariants } from "../logger";
+import { Logger, ILoggerVariants } from "../logger";
 
 enum EnvVars {
   PORT = "PORT",

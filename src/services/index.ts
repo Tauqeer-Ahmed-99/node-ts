@@ -1,5 +1,5 @@
 import DatabaseAccessLayer from "../database/access-layer";
-import Logger from "../logger";
+import { Logger } from "../logger";
 import TraceLogsService from "./trace-logs-service";
 import WalletService from "./wallet-service";
 
