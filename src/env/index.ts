@@ -41,7 +41,6 @@ class ENV {
         message: `${
           varsNotIncluded.length
         } Environment variable(s) ${varsNotIncluded.join(", ")} are not set.`,
-        user: null,
         variants: [ILoggerVariants.CLI],
       });
 
@@ -51,7 +50,6 @@ class ENV {
     await this.logger.info({
       logName: "ENV",
       message: "All required environment variables are set.",
-      user: null,
       variants: [ILoggerVariants.CLI],
     });
   }

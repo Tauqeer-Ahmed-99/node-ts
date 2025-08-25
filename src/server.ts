@@ -82,7 +82,6 @@ app.listen(PORT, async () => {
   await logger.info({
     logName: "Server",
     message: `Running on http://localhost:${PORT}`,
-    user: null,
     logId: id,
   });
   await logger.end(id);
@@ -106,7 +105,6 @@ app.listen(PORT, async () => {
   await logger.info({
     logName: "Logging Sample",
     message: "This is a sample Logging.",
-    user: null,
     variants: [ILoggerVariants.CLI],
   });
 });
