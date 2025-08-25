@@ -98,7 +98,10 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/db-name
 - `npm run build`: Compile TypeScript to JavaScript
 - `npm start`: Run compiled server
 - `npm run db-gen`: Generate Drizzle ORM migrations
-- `npm run db-migrate`: Run database migrations
+- `npm run db-mig`: Run database migrations
+- `npm run db-pull`: Pull the latest schema from the database
+- `npm run db-introspect`: Introspect the current database schema
+- `npm run db-pull-schema`: Pull only the schema from the database
 
 ---
 

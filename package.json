@@ -8,7 +8,10 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "db-gen": "npx drizzle-kit generate",
-    "db-migrate": "npx drizzle-kit migrate",
+    "db-mig": "npx drizzle-kit migrate",
+    "db-pull": "npx drizzle-kit pull",
+    "db-introspect": "npx drizzle-kit introspect",
+    "db-pull-schema": "npx drizzle-kit pull --schema",
     "test": "echo 'No tests specified' && exit 0"
   },
   "keywords": [
