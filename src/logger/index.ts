@@ -47,77 +47,173 @@ export interface ILogger {
   ) => Promise<boolean>;
 }
 
-class Logger {
-  private loggers: ILogger[];
-  private logs = new Map<string, LogMessage[]>();
+/**
+ * Logger class to handle logging to multiple destinations (CLI, file, database).
+ * Supports grouping logs by ID and provides utility methods for each log level.
+ */
+export class Logger {
+  // Use private fields for encapsulation
+  #loggers: ILogger[];
+  #logs: Map<string, LogMessage[]> = new Map();
+  #loggerUtils: LoggerUtils;
+  user: AuthUser | null;
 
-  user: AuthUser = null;
-  private loggerUtils = new LoggerUtils();
-
-  constructor(loggers: ILogger[]) {
-    this.loggers = loggers;
+  /**
+   * @param loggers Array of logger implementations
+   * @param user Optional AuthUser for context
+   */
+  constructor(loggers: ILogger[], user: AuthUser | null = null) {
+    this.#loggers = loggers;
+    this.user = user;
+    this.#loggerUtils = new LoggerUtils();
   }
 
-  private getLoggers = (variants: ILoggerVariants[]) => {
-    return this.loggers.filter(
-      (logger) =>
-        variants.length > 0 ? variants.includes(logger.variant) : true // Include all loggers if no variants are specified
-    );
-  };
+  /**
+   * Get loggers matching the specified variants. If none specified, return all.
+   */
+  public getLoggers(variants: ILoggerVariants[] = []): ILogger[] {
+    if (!variants || variants.length === 0) return this.#loggers;
+    return this.#loggers.filter((logger) => variants.includes(logger.variant));
+  }
 
-  private log = async (
+  /**
+   * Log a message or add to a log group if logId is provided.
+   */
+  /**
+   * Dispatch log to CLI logger(s).
+   */
+  private async dispatchToCLI(
     logName: string,
     message: string,
     level: LogLevel,
-    variants: ILoggerVariants[],
+    timestamp: Date
+  ): Promise<boolean[]> {
+    const cliLoggers = this.#loggers.filter(
+      (l) => l.variant === ILoggerVariants.CLI
+    );
+    return Promise.all(
+      cliLoggers.map((logger) =>
+        logger[level](logName, message, timestamp, this.user)
+      )
+    );
+  }
+
+  /**
+   * Dispatch log to FILE logger(s).
+   */
+  private async dispatchToFile(
+    logName: string,
+    message: string,
+    level: LogLevel,
+    timestamp: Date
+  ): Promise<boolean[]> {
+    const fileLoggers = this.#loggers.filter(
+      (l) => l.variant === ILoggerVariants.FILE
+    );
+    return Promise.all(
+      fileLoggers.map((logger) =>
+        logger[level](logName, message, timestamp, this.user)
+      )
+    );
+  }
+
+  /**
+   * Dispatch log to DATABASE logger(s).
+   */
+  private async dispatchToDatabase(
+    logName: string,
+    message: string,
+    level: LogLevel,
+    timestamp: Date
+  ): Promise<boolean[]> {
+    const dbLoggers = this.#loggers.filter(
+      (l) => l.variant === ILoggerVariants.DATABASE
+    );
+    return Promise.all(
+      dbLoggers.map((logger) =>
+        logger[level](logName, message, timestamp, this.user)
+      )
+    );
+  }
+
+  /**
+   * Main log method, delegates to dispatcher(s) based on variants.
+   */
+  private async log(
+    logName: string,
+    message: string,
+    level: LogLevel,
+    variants: ILoggerVariants[] = [],
     logId?: string
-  ) => {
+  ): Promise<boolean> {
     const timestamp = new Date();
 
     if (logId) {
-      if (this.logs.has(logId)) {
-        this.logs.get(logId)?.push({
-          id: logId,
-          level,
-          logName,
-          message,
-          timestamp,
-        });
-
-        return Promise.resolve(true);
+      const group = this.#logs.get(logId);
+      if (group) {
+        group.push({ id: logId, level, logName, message, timestamp });
+        return true;
+      } else {
+        console.error(`[Logger] Log group with id not found: ${logId}`);
+        return false;
       }
-
-      console.error(`Logs with id not found ${logId}`);
-
-      return Promise.resolve(false);
     }
 
-    return Promise.all(
-      this.getLoggers(variants).map((logger) =>
-        logger[level](logName, message, timestamp, this.user)
-      )
-    )
-      .then(() => true)
-      .catch(() => false);
-  };
+    // If no variants specified, dispatch to all
+    const useVariants =
+      variants && variants.length > 0
+        ? variants
+        : Object.values(ILoggerVariants);
+    try {
+      const results: boolean[][] = await Promise.all(
+        useVariants.map(async (variant) => {
+          switch (variant) {
+            case ILoggerVariants.CLI:
+              return this.dispatchToCLI(logName, message, level, timestamp);
+            case ILoggerVariants.FILE:
+              return this.dispatchToFile(logName, message, level, timestamp);
+            case ILoggerVariants.DATABASE:
+              return this.dispatchToDatabase(
+                logName,
+                message,
+                level,
+                timestamp
+              );
+            default:
+              return [];
+          }
+        })
+      );
+      // Flatten and check if all succeeded
+      return results.flat().every(Boolean);
+    } catch (err) {
+      console.error(`[Logger] Error logging message:`, err);
+      return false;
+    }
+  }
 
-  start = () => {
+  /**
+   * Start a new log group and return its ID.
+   */
+  start(): string {
     const id = uuidv4();
-    this.logs.set(id, []);
+    this.#logs.set(id, []);
     return id;
-  };
+  }
 
-  end = async (logId: string) => {
-    const logs = this.logs.get(logId);
-
+  /**
+   * End a log group, flush its logs, and remove it from memory.
+   */
+  async end(logId: string): Promise<boolean> {
+    const logs = this.#logs.get(logId);
     if (!logs) {
-      console.error(`Logs with id not found ${logId}`);
-      return Promise.resolve(true);
+      console.error(`[Logger] Log group with id not found: ${logId}`);
+      return false;
     }
 
     const content = logs
       .map((log) =>
-        this.loggerUtils.getContent(
+        this.#loggerUtils.getContent(
           log.level,
           log.logName,
           log.message,
@@ -125,56 +221,71 @@ class Logger {
           this.user
         )
       )
-      .join(`\n`);
+      .join("\n");
 
-    return this.log(
+    const endContent = this.#loggerUtils.getContent(
+      "info",
+      `End LogId: ${logId}`,
+      "Log group End.",
+      new Date(),
+      this.user
+    );
+
+    const result = await this.log(
       `LogId: ${logId}`,
-      `\n${content}\n${this.loggerUtils.getContent(
-        "info",
-        `End LogId: ${logId}`,
-        "Log group End.",
-        new Date(),
-        this.user
-      )}`,
+      `\n${content}\n${endContent}`,
       "info",
       []
-    )
-      .then((isSuccess) => {
-        this.logs.delete(logId);
-        return isSuccess;
-      })
-      .catch(() => {
-        return false;
-      });
-  };
+    );
+    this.#logs.delete(logId);
+    return result;
+  }
 
-  info = (
+  /**
+   * Log an info message.
+   */
+  info(
     logName: string,
     message: string,
     variants: ILoggerVariants[] = [],
     logId?: string
-  ): Promise<boolean> => this.log(logName, message, "info", variants, logId);
+  ): Promise<boolean> {
+    return this.log(logName, message, "info", variants, logId);
+  }
 
-  success = (
+  /**
+   * Log a success message.
+   */
+  success(
     logName: string,
     message: string,
     variants: ILoggerVariants[] = [],
     logId?: string
-  ): Promise<boolean> => this.log(logName, message, "success", variants, logId);
+  ): Promise<boolean> {
+    return this.log(logName, message, "success", variants, logId);
+  }
 
-  warn = (
+  /**
+   * Log a warning message.
+   */
+  warn(
     logName: string,
     message: string,
     variants: ILoggerVariants[] = [],
     logId?: string
-  ): Promise<boolean> => this.log(logName, message, "warn", variants, logId);
+  ): Promise<boolean> {
+    return this.log(logName, message, "warn", variants, logId);
+  }
 
-  error = (
+  /**
+   * Log an error message.
+   */
+  error(
     logName: string,
     message: string,
     variants: ILoggerVariants[] = [],
     logId?: string
-  ): Promise<boolean> => this.log(logName, message, "error", variants, logId);
+  ): Promise<boolean> {
+    return this.log(logName, message, "error", variants, logId);
+  }
 }
-
-export default Logger;

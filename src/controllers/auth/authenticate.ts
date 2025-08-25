@@ -89,8 +89,6 @@ const authenticate = async (
       issuedAt,
     };
 
-    req.logger.user = req.user;
-
     if (now > expiresAt) {
       const response: APIResponse = {
         status: APIStatus.Error,
