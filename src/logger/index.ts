@@ -1,7 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
-
 import { AuthUser } from "../types/auth";
-import chalk from "chalk";
+import { LoggerUtils } from "./utils";
 
 export enum ILoggerVariants {
   CLI = "cli",
@@ -53,6 +52,7 @@ class Logger {
   private logs = new Map<string, LogMessage[]>();
 
   user: AuthUser = null;
+  private loggerUtils = new LoggerUtils();
 
   constructor(loggers: ILogger[]) {
     this.loggers = loggers;
@@ -63,21 +63,6 @@ class Logger {
       (logger) =>
         variants.length > 0 ? variants.includes(logger.variant) : true // Include all loggers if no variants are specified
     );
-  };
-
-  private getContent = (
-    level: LogLevel,
-    logName: string,
-    message: string,
-    timestamp: Date,
-    user: AuthUser = null
-  ) => {
-    const content = `${chalk.bgBlue(`[${level.toUpperCase()}]`)} ${chalk.blue(
-      `[${timestamp.toISOString()}] ${
-        user ? `[Requested By: ${user.userId}]` : ""
-      } [${logName}] ${message}`
-    )}`;
-    return content;
   };
 
   private log = async (
@@ -98,9 +83,11 @@ class Logger {
           message,
           timestamp,
         });
-        console.error(`Logs with id not found ${logId}`);
-        return Promise.resolve(false);
+
+        return Promise.resolve(true);
       }
+
+      console.error(`Logs with id not found ${logId}`);
 
       return Promise.resolve(false);
     }
@@ -130,7 +117,7 @@ class Logger {
 
     const content = logs
       .map((log) =>
-        this.getContent(
+        this.loggerUtils.getContent(
           log.level,
           log.logName,
           log.message,
@@ -138,9 +125,20 @@ class Logger {
           this.user
         )
       )
-      .join("\n");
+      .join(`\n`);
 
-    return this.log(`[LogId: ${logId}]`, content, "info", [])
+    return this.log(
+      `LogId: ${logId}`,
+      `\n${content}\n${this.loggerUtils.getContent(
+        "info",
+        `End LogId: ${logId}`,
+        "Log group End.",
+        new Date(),
+        this.user
+      )}`,
+      "info",
+      []
+    )
       .then((isSuccess) => {
         this.logs.delete(logId);
         return isSuccess;

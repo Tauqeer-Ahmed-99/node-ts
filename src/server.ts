@@ -64,7 +64,18 @@ app.get("/api/protected", async (req, res) => {
 app.use(errorHandler);
 
 app.listen(PORT, async () => {
-  await logger.info("Server", `Running on http://localhost:${PORT}`, [
+  // Grouped Logging
+  // This will log all messages within the group in batch whenever the logger.end() is called.
+  // passing ILoggerVariants as [] or undefined will log to all loggers.
+  // IMPORTANT: Make sure to pass the logId to logs which need to be grouped.
+  const id = logger.start();
+  await logger.info("Server", `Running on http://localhost:${PORT}`, [], id);
+  await logger.end(id);
+
+  // Simple Logging
+  // Passing ILoggerVariants restricts to the specified loggers only.
+  // i.e. in this case, only the CLI logger will log this message.
+  await logger.info("Logging Sample", `This is a sample Logging.`, [
     ILoggerVariants.CLI,
   ]);
 });
